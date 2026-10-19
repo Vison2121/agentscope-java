@@ -492,21 +492,25 @@ class ReActAgentPerSessionStateTest {
                 ReActAgent.builder().name("asst").sysPrompt("hi").model(new NoopModel()).build();
         AgentState defaultState = agent.getAgentState();
         AgentState sessionState = agent.getAgentState("u1", "sessA");
+        Msg input = userMsg("duplicate prompt");
+        sessionState.contextMutable().add(input);
         sessionState.setShutdownInterrupted(true);
 
         Msg response =
                 agent.call(
-                                List.of(userMsg("duplicate prompt")),
+                                List.of(input),
                                 RuntimeContext.builder().userId("u1").sessionId("sessA").build())
                         .block(Duration.ofSeconds(5));
 
         assertEquals("ok", response.getTextContent());
         assertFalse(sessionState.isShutdownInterrupted());
         assertFalse(defaultState.isShutdownInterrupted());
-        assertTrue(
+        assertEquals(
+                1,
                 sessionState.getContext().stream()
-                        .noneMatch(msg -> "duplicate prompt".equals(msg.getTextContent())),
-                "the retry input must be discarded for the interrupted session");
+                        .filter(msg -> "duplicate prompt".equals(msg.getTextContent()))
+                        .count(),
+                "the retry input must not be added again to the interrupted session");
 
         ReActAgent otherAgent =
                 ReActAgent.builder().name("asst").sysPrompt("hi").model(new NoopModel()).build();

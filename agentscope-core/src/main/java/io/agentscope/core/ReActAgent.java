@@ -2168,16 +2168,27 @@ public class ReActAgent extends AgentBase implements AutoCloseable {
         }
 
         private Mono<Msg> doCallInner(List<Msg> msgs) {
-            // Graceful-shutdown deduplication: if the agent's session was previously interrupted
-            // by shutdown, the client is likely retrying with the same user prompt that already
-            // exists in memory. Discard the duplicate input so the agent resumes purely from its
-            // saved memory context.
+            // A shutdown-interrupted session may receive either a retry or a new request.
+            // Only deduplicate user messages whose IDs already exist in this session's context;
+            // matching text alone does not establish that the client is retrying.
             if (shutdownManager.checkAndClearShutdownInterruptedForState(state)) {
-                log.info(
-                        "Detected shutdown-interrupted session for agent {}, discarding duplicate"
-                                + " input",
-                        getName());
-                msgs = List.of();
+                log.info("Resuming shutdown-interrupted session for agent {}", getName());
+                if (msgs != null && !msgs.isEmpty()) {
+                    Set<String> savedUserIds =
+                            state.getContext().stream()
+                                    .filter(msg -> msg.getRole() == MsgRole.USER)
+                                    .map(Msg::getId)
+                                    .filter(id -> id != null && !id.isBlank())
+                                    .collect(Collectors.toSet());
+                    msgs =
+                            msgs.stream()
+                                    .filter(
+                                            msg ->
+                                                    msg.getRole() != MsgRole.USER
+                                                            || msg.getId() == null
+                                                            || !savedUserIds.contains(msg.getId()))
+                                    .toList();
+                }
             }
 
             Set<String> pendingIds = MessageUtils.pendingToolUseIds(state.contextMutable());

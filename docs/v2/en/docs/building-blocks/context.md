@@ -271,6 +271,12 @@ The reasoning loop checks its execution's signal at cooperative checkpoints. A u
 
 `AgentState.shutdownInterrupted` is a separate, persisted recovery marker. Graceful shutdown binds both the execution control and the state resolved for that call; queued calls have no state to save. No interrupt flag is carried into the next run or loaded on another node.
 
+When a shutdown-interrupted session receives its next call, the marker is cleared. Only incoming
+user messages with a nonblank `Msg.id` matching a saved user message in that session are
+deduplicated. New message IDs are preserved, even when the text matches an earlier request.
+Clients that resend an interrupted request should preserve its original message IDs; clients
+creating a new request should use new IDs. An empty input resumes from the saved context.
+
 ### Concurrent usage
 
 Configure this Builder at startup, then build separate instances for Alice and Bob. The workspace must persist between requests; replicas also need access to the same native log backend.
